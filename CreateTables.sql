@@ -1,6 +1,9 @@
 -- Created by Redgate Data Modeler (https://datamodeler.redgate-platform.com)
 -- Last modification date: 2025-03-11 18:07:02.523
 
+set search_path to unc_45998975;
+set search_path to unc_46911166;
+
 -- tables
 -- Table: AREA
 CREATE TABLE AREA (
