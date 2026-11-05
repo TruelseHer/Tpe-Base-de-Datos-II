@@ -1,4 +1,5 @@
 set search_path to unc_45998975;
+set search_path to unc_46911166;
 
 -- Para cada una de las siguientes restricciones de integridad sobre el esquema dado
 -- - provea una implementación según el estándar SQL con el recurso declarativo más restrictivo posible, indicando su tipo y justificación correspondiente.
