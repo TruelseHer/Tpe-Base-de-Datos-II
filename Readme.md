@@ -1,3 +1,3 @@
-Este contenido es para blas muy fachero
+Este contenido es para 
 
 Trabajo de BASES DE DATOS II
