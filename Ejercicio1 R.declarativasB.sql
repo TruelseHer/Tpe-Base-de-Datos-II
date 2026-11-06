@@ -4,12 +4,6 @@ set search_path to unc_45998975;
 
 
 
-
-
-
-
-
-
 -- TABLAS          INSERT            UPDATE               DELETE      TIPO FOR
 -- Medico         Correcto          Correcto             Incorrecto     F.row
 -- Area           Correcto          Correcto             Incorrecto     F.row
