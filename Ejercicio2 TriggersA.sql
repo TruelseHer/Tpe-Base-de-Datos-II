@@ -124,9 +124,9 @@ CREATE OR REPLACE FUNCTION fn_internacion ()
              IF (new.fecha_salida IS NOT NULL AND old.fecha_salida IS NULL)
             THEN
             UPDATE habitacion SET situacion = 'L' WHERE id_area = new.id_area AND nro_habitacion = new.nro_habitacion;
-        end if;
+                end if;
 
-        end if;
+            end if;
              IF (EXISTS(SELECT 'X' FROM internacion i
                  WHERE i.id_area = old.id_area AND i.id_area = old.nro_habitacion AND i.fecha_salida IS NULL))
                  THEN
