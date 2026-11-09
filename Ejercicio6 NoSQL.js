@@ -5,6 +5,7 @@ use hospital;
 
 db.internaciones.aggregate([
     // Join entre la coleccion internacion y area
+    //No usar join, fijarse en el area que esta metido en la tabla internaciones
     { $lookup : {
         from : "areas",
         localField : "habitacion.id_area",
@@ -21,7 +22,6 @@ db.internaciones.aggregate([
 
         // Filtramos (Where)
         $match : {
-            "fecha_ingreso" : { $lte : new Date()},
             "internacion_area.denominacion" : "Terapia Intensiva",
             fecha_salida : null
         }
@@ -46,6 +46,7 @@ db.internaciones.aggregate([
 // fecha_ingreso >= 2025-01-01 AND fecha_ingreso <= 2025-12-31
 // fecha_salida >= 2025-01-01 AND fecha_salida <= 2025-12-31
 // fecha_ingreso < 2025-01-01 AND fecha_salida >=  2025-12-31
+
 
 
     db.internaciones.aggregate([
