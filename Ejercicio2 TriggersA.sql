@@ -37,10 +37,12 @@ AS $$
 -- 2.b) mantener automáticamente actualizadas tanto la cantidad de habitaciones disponibles en cada área como la situación (libre/ocupada) de las habitaciones,
 -- a medida que éstas se ocupan o desocupan (considere que los valores actuales son consistentes con los datos existentes en la base).
 
-
+-- ====================================================================================
+-- IMPLEMENTACION CON TRIGGERS
 --    TABLA/S       INSERT                     UPDATE                             DELETE
 --    HABITACION   correcto    correcto(situacion, id_area)                      correcto
 --    INTERNACION  correcto    correcto(fecha_salida,nro_habitacion, id_area)    correcto
+-- ====================================================================================
 
 CREATE OR REPLACE FUNCTION fn_habitacion ()
     RETURNS TRIGGER AS $$
@@ -72,6 +74,50 @@ CREATE OR REPLACE FUNCTION fn_habitacion ()
     END;
     $$ LANGUAGE 'plpgsql';
 
+
+CREATE OR REPLACE FUNCTION fn_habitacion ()
+    RETURNS TRIGGER AS $$
+    BEGIN
+        -- Caso que se realize un INSERT
+        IF(TG_OP = 'INSERT' AND new.situacion = 'L')
+            THEN
+            UPDATE area SET cant_habit_disponibles = cant_habit_disponibles + 1 WHERE id_area = new.id_area;
+
+
+        -- Caso que se realize un UPDATE
+
+        ELSIF (TG_OP = 'UPDATE')
+            THEN
+            -- CASO 1 : Cambia el area
+            IF (new.id_area <> old.id_area)
+                THEN
+                -- Caso en que el area vieja tenga L: le debemos quitar 1 ya que tiene un espacio libre menos
+                IF (old.situacion = 'L')
+                    THEN
+                    UPDATE area SET cant_habit_disponibles = cant_habit_disponibles -1 WHERE id_area = old.id_area;
+                end if;
+                -- Caso en que el area nueva tenga L: le debemos sumar 1
+                IF (new.situacion = 'L') THEN
+                    UPDATE area SET cant_habit_disponibles = cant_habit_disponibles + 1 WHERE id_area = new.id_area;
+                end if;
+              -- CASO 2 : Cambia de situacion
+            ELSIF (old.situacion <> new.situacion)
+                THEN
+                IF (old.situacion = 'O')
+                    THEN
+                    UPDATE area SET cant_habit_disponibles = cant_habit_disponibles + 1 WHERE id_area = new.id_area;
+                end if;
+
+                IF (old.situacion = 'L')
+                    THEN
+                    UPDATE area SET cant_habit_disponibles = cant_habit_disponibles - 1 WHERE id_area = new.id_area;
+                end if;
+            end if;
+        end if;
+    RETURN NEW;
+    END;
+    $$ LANGUAGE 'plpgsql';
+
 CREATE OR REPLACE TRIGGER tr_habitacion
     BEFORE INSERT OR UPDATE OF situacion, id_area
     ON HABITACION
@@ -96,48 +142,66 @@ CREATE OR REPLACE TRIGGER tr_habitacion_delete
     EXECUTE FUNCTION fn_habitacion_delete();
 
 
--- Si cambia fecha salida a null --> Situacion O------------------- Hecho
--- Si cambia fecha salida a X fecha --> Situacion L --------------- Hecho
--- Lo de arriba considerarlo tambien con insert
+CREATE OR REPLACE FUNCTION fn_internacion()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- CASO 1: Se cambió el paciente de habitación (UPDATE de id_area o nro_habitacion)
+    IF (TG_OP = 'UPDATE' AND (OLD.id_area IS DISTINCT FROM NEW.id_area OR OLD.nro_habitacion IS DISTINCT FROM NEW.nro_habitacion)) THEN
 
--- Si cambia [area/nro_habitacion] actualizo segun lo de arriba ---- Hecho
+        -- Caso en el que la habitacion vieja se libera si no le quedan otras internaciones activas
+        IF NOT EXISTS (
+            SELECT 1
+            FROM internacion
+            WHERE id_area = OLD.id_area
+              AND nro_habitacion = OLD.nro_habitacion
+              AND fecha_salida IS NULL
+              AND id_paciente <> OLD.id_paciente
+        ) THEN
+            UPDATE habitacion
+            SET situacion = 'L'
+            WHERE id_area = OLD.id_area
+              AND nro_habitacion = OLD.nro_habitacion;
+        END IF;
 
-CREATE OR REPLACE FUNCTION fn_internacion ()
-    RETURNS TRIGGER AS $$
-    BEGIN
-        IF (new.fecha_salida IS NULL AND (tg_op = 'INSERT' OR old.fecha_salida IS NOT NULL))
-            THEN
-            UPDATE habitacion SET situacion = 'O' WHERE id_area = new.id_area AND nro_habitacion = new.nro_habitacion;
-        end if;
+        -- Caso en el que si la internacion esta activa en la habitacion nueva, la marcamos ocupada
+        IF (NEW.fecha_salida IS NULL) THEN
+            UPDATE habitacion
+            SET situacion = 'O'
+            WHERE id_area = NEW.id_area
+              AND nro_habitacion = NEW.nro_habitacion;
+        END IF;
 
-        IF (new.fecha_salida IS NOT NULL AND (tg_op = 'INSERT' OR old.fecha_salida IS NULL))
-            THEN
-            UPDATE habitacion SET situacion = 'L' WHERE id_area = new.id_area AND nro_habitacion = new.nro_habitacion;
-        end if;
+    -- CASO 2: Realizas INSERT o UPDATE respecto a la fecha_salida
+    ELSE
+        -- Caso en el que sigue internado
+        IF (NEW.fecha_salida IS NULL) THEN
+            UPDATE habitacion
+            SET situacion = 'O'
+            WHERE id_area = NEW.id_area
+              AND nro_habitacion = NEW.nro_habitacion;
 
-        IF (old.id_area <> new.id_area OR old.nro_habitacion <> new.nro_habitacion)
-            THEN
-             IF (new.fecha_salida IS NULL AND old.fecha_salida IS NOT NULL)
-            THEN
-            UPDATE habitacion SET situacion = 'O' WHERE id_area = new.id_area AND nro_habitacion = new.nro_habitacion;
+        -- Caso en el que se le da de alta, primero corroboramos si no quedan otros pacientes en la habitacion
+        ELSIF (NEW.fecha_salida IS NOT NULL) THEN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM internacion
+                WHERE id_area = NEW.id_area
+                  AND nro_habitacion = NEW.nro_habitacion
+                  AND fecha_salida IS NULL
+                  -- Excluimos al paciente actual
+                  AND id_paciente <> NEW.id_paciente
+            ) THEN
+                UPDATE habitacion
+                SET situacion = 'L'
+                WHERE id_area = NEW.id_area
+                  AND nro_habitacion = NEW.nro_habitacion;
+            END IF;
+        END IF;
+    END IF;
 
-             IF (new.fecha_salida IS NOT NULL AND old.fecha_salida IS NULL)
-            THEN
-            UPDATE habitacion SET situacion = 'L' WHERE id_area = new.id_area AND nro_habitacion = new.nro_habitacion;
-                end if;
-
-            end if;
-             IF (EXISTS(SELECT 'X' FROM internacion i
-                 WHERE i.id_area = old.id_area AND i.id_area = old.nro_habitacion AND i.fecha_salida IS NULL))
-                 THEN
-                 UPDATE habitacion set situacion =  'O' WHERE id_area = old.id_area AND nro_habitacion = old.nro_habitacion;
-             ELSE
-                  UPDATE habitacion set situacion =  'L' WHERE id_area = old.id_area AND nro_habitacion = old.nro_habitacion;
-             end if;
-        end if;
-        RETURN NEW;
-    end;
-    $$ LANGUAGE 'plpgsql';
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE TRIGGER tr_internacion
@@ -150,7 +214,7 @@ CREATE OR REPLACE FUNCTION fn_internacion_delete ()
     RETURNS TRIGGER AS $$
     BEGIN
      IF (EXISTS(SELECT 'X' FROM internacion i
-                 WHERE i.id_area = old.id_area AND i.id_area = old.nro_habitacion AND i.fecha_salida IS NULL))
+                 WHERE i.id_area = old.id_area AND i.nro_habitacion = old.nro_habitacion AND i.fecha_salida IS NULL))
                  THEN
                  UPDATE habitacion set situacion =  'O' WHERE id_area = old.id_area AND nro_habitacion = old.nro_habitacion;
              ELSE
@@ -160,8 +224,12 @@ CREATE OR REPLACE FUNCTION fn_internacion_delete ()
     end;
     $$ LANGUAGE 'plpgsql';
 
+-- IMPLEMENTACION:
+-- Realizamos trigger AFTER, ya que dentro del exists a la hora de chequear las filas, si el trigger
+-- esta definido como BEFORE, se contemplaria
+-- la fila que se desea eliminar. Por ende para realizarlo de forma mas sencilla utilizamos AFTER.
 CREATE OR REPLACE TRIGGER tr_internacion_delete
-    BEFORE DELETE
+    AFTER DELETE
     ON internacion
     FOR EACH ROW
     EXECUTE FUNCTION fn_internacion_delete ();

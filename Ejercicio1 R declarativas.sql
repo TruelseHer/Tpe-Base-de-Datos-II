@@ -11,8 +11,10 @@ set search_path to unc_46911166;
 
 -- 1.a) Al menos el 30% de las habitaciones de cada área deben disponer de lugar para acompañante.
 
+-- ===============================================
 --    Tabla/s        Atributo/s            Tipo
 --   Habitacion      id_area/acompaniante  Tabla
+-- ===============================================
 
     ALTER TABLE habitacion ADD CONSTRAINT check_lugar_acompaniante
         -- No existe X que no cumpla C
@@ -20,13 +22,19 @@ set search_path to unc_46911166;
                                     GROUP BY h.id_area
                                     HAVING (SUM(h.acompaniante::int)::numeric)/(COUNT(*)) < 0.3 ));
 
--- Al implementar subconsuta y funciones de agregacion definimos los triggers ya que en Postgresql no se podria realizar la operacion
+-- Al implementar subconsuta y funciones de agregacion definimos los triggers ya que en Postgresql no se podria realizar la operacion.
 
+
+-- ====================================================================================
+-- IMPLEMENTACION CON TRIGGERS
 -- TABLAS          INSERT            UPDATE                        DELETE      TIPO FOR
 -- habitacion      Correcto   Correcto(Id_area/Acompaniante)      Correcto     FOR ROW
+-- ====================================================================================
 
 
--- Definicion de Trigger
+-- Implementacion :
+-- Chequeamos que el nuevo registro que se inserto/modifico no supere el 70% de habitaciones con acompaniante [acompaniante = false]
+-- En caso de que supere el 70% se lanzara una exception que impide la insercion/modificacion
 
     CREATE OR REPLACE FUNCTION fn_check_lugar_acompaniante()
     RETURNS TRIGGER AS $$
@@ -37,12 +45,21 @@ set search_path to unc_46911166;
                      GROUP BY h.id_area
                      HAVING COUNT(*)::numeric/(SELECT COUNT(*) FROM habitacion WHERE id_area = new.id_area) > 0.7)
                      THEN
-                     RAISE EXCEPTION 'Se ha intentado ingresar para new.id_area area una habitacion sin lugar con acompaniante el cual supera la capacidad maxima';
-                 end if;
+                     RAISE EXCEPTION 'En el área % se ha intentado ingresar/modificar una habitación sin acompañante, superando el límite máximo permitido', NEW.id_area;
+                     END IF;
+                 -- Chequeo de que old area <> new area
+                IF (tg_op = 'UPDATE' AND OLD.id_area <> NEW.id_area)
+                 THEN
+
+                end if;
              RETURN NEW;
         END;
         $$ LANGUAGE 'plpgsql';
 
+-- Implementacion Trigger
+-- Adaptamos el trigger de forma AFTER, ya que la implementacion de la misma nos facilita la solucion de distintos errores.
+-- Esto ya que al tener que sacar porcentajes basados en las filas y realizar calculos, si consideramos utilizar BEFORE
+-- Deberiamos considerar que la fila todavia no se ha insertado. Por lo que con AFTER se soluciona.
 
     CREATE OR REPLACE TRIGGER tr_check_lugar_acompaniante
     AFTER INSERT OR UPDATE OF id_area, acompaniante
@@ -54,16 +71,17 @@ set search_path to unc_46911166;
     CREATE OR REPLACE FUNCTION fn_check_lugar_acompaniante_delete()
     RETURNS TRIGGER AS $$
         BEGIN
+            -- Se valida si la fila que se elimino tenia acompaniante
                 IF(old.acompaniante = true)
                     THEN
                     IF(EXISTS(SELECT 'X' FROM habitacion h
                         WHERE h.id_area = old.id_area AND h.acompaniante = false
                         GROUP BY h.id_area
-                        HAVING COUNT(*)::numeric/(SELECT COUNT(*) FROM habitacion WHERE id_area = old.id_area) > 0.7))
+                        HAVING COUNT(*)::numeric/(SELECT COUNT(*) FROM habitacion WHERE id_area = OLD.id_area) > 0.7))
                         THEN
-                        RAISE EXCEPTION 'No se puede eliminar el area ya que no cumple con los requisitos de las habitaciones';
-                    end if;
-                end if;
+                        RAISE EXCEPTION 'No se puede eliminar el area % ya que no cumple con los requisitos de las habitaciones', OLD.id_area;
+                    END IF;
+                END IF;
                 RETURN OLD;
         END;
         $$ LANGUAGE 'plpgsql';
@@ -73,6 +91,9 @@ set search_path to unc_46911166;
     ON HABITACION
     FOR EACH ROW
     EXECUTE FUNCTION fn_check_lugar_acompaniante_delete();
+
+
+
 
 INSERT INTO habitacion (id_area, nro_habitacion, descripcion_accesorios, acompaniante, situacion) values (2,203, 'A', true, 'L');
 

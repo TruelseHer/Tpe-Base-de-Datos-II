@@ -4,6 +4,13 @@ set search_path to unc_46911166;
 -- 3.a) Vista que incluya sólo identificador y denominación de la/s área/s que posea/n la mayor cantidad de internaciones iniciadas
 -- en el año en curso.
 
+-- Implementacion :
+-- Para garantizar que la vista sea automáticamente actualizable en PostgreSQL
+-- encapsulamos la lógica compleja (JOIN, GROUP BY y función de ventana) dentro de
+-- una subconsulta en la cláusula WHERE mediante la condición IN. De esta forma
+-- la consulta principal opera únicamente sobre la tabla base area.
+
+
 CREATE VIEW ranking_area AS
 SELECT area.id_area, area.denominacion
 FROM area
@@ -15,9 +22,11 @@ FROM area
             rank() OVER (ORDER BY count(*) DESC) AS ranking
         FROM area a
         JOIN internacion i USING (id_area)
+        -- filtramos aquellas fechas donde coinciden con la fecha actual (Current_date)
         WHERE extract(year FROM i.fecha_ingreso) = extract(year FROM current_date)
         GROUP BY a.id_area, a.denominacion
             )
+        -- filtramos aquellas areas que forman parte del primer puesto en el ranking
         SELECT id_area
         FROM internacion_area
         WHERE ranking = 1
@@ -105,3 +114,5 @@ where ranking_obrasocial <= 3;
  - Funcion de ventana (dense_rank)
  - Ensamble entre tablas (join)
  */
+
+-- Para que la vista sea automaticamente actualizable [INSERT, UPDATE, DELETE] se deberia de integrar Triggers INSTEAD OF.

@@ -3,37 +3,10 @@ use hospital;
 //Plantee las operaciones que permitan resolver las siguientes consultas en la BD NoSQL MongoDB (*):
 //6.a) Listar los pacientes internados en este momento en Terapia Intensiva. Para cada uno, mostrar el nombre del paciente, el número de habitación, la fecha de ingreso, el diagnóstico principal y el apellido del médico asignado. Ordenar desde la internación más reciente a la más antigua.
 
-db.internaciones.aggregate([
-    // Join entre la coleccion internacion y area
-    //No usar join, fijarse en el area que esta metido en la tabla internaciones
-    { $lookup : {
-        from : "areas",
-        localField : "habitacion.id_area",
-        foreignField : "_id",
-        as : "internacion_area"
-    }
-        },
-    // Descomponemos el array generado
-    {
-        $unwind : "$internacion_area"
-    },
-
-    {
-
-        // Filtramos (Where)
-        $match : {
-            "internacion_area.denominacion" : "Terapia Intensiva",
-            fecha_salida : null
-        }
-    },
-
-    // Ordenamos desde la internación más reciente a la más antigua.
-    {
-        $sort : { "fecha_ingreso" : -1}
-        },
-        // Select con los datos que precisamos
-    {
-        $project: {
+ db.internaciones.find(
+        { "habitacion.area" : "Terapia Intensiva",
+            fecha_salida : null },
+        {
             _id : 0,
             "paciente.nombre" : 1,
             "habitacion.nro" : 1,
@@ -41,12 +14,12 @@ db.internaciones.aggregate([
             diagnostico_ppal : 1,
             "medico_asignado.apellido" : 1
         }
-    }
-                                                                            ])
+        ).sort({ "fecha_ingreso" : -1})
+
+
 // fecha_ingreso >= 2025-01-01 AND fecha_ingreso <= 2025-12-31
 // fecha_salida >= 2025-01-01 AND fecha_salida <= 2025-12-31
 // fecha_ingreso < 2025-01-01 AND fecha_salida >=  2025-12-31
-
 
 
     db.internaciones.aggregate([
